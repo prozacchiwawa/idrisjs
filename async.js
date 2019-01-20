@@ -6,7 +6,7 @@ function putInQueue(value, queue){
   }else{
     var callB = queue.callback;
     queue.callback = undefined;
-    callB(value);
+    setTimeout(function() { callB(value); }, 0);
   }
 }
 
