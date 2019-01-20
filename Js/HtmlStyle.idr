@@ -96,6 +96,9 @@ color = mkStyle "color"
 backgroundColor : String -> Style
 backgroundColor = mkStyle "background-color"
 
+padding : Double -> Style
+padding x = mkStyle "padding" (pixels x)
+
 namespace UserSelect
 
   public export
