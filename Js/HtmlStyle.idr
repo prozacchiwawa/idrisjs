@@ -22,6 +22,9 @@ height x = mkStyle "height" (pixels x)
 width: Double -> Style
 width x = mkStyle "width" (pixels x)
 
+borderRadius : Double -> Style
+borderRadius x = mkStyle "border-radius" (pixels x)
+
 margin : Double -> Style
 margin x = mkStyle "margin" (pixels x)
 
@@ -75,14 +78,20 @@ flex opts =
   [mkStyle "display" "flex", listStyleToStyle $ map (\(MkFlexOption x) => x) opts]
 
 public export
-data Position = Static | Fixed Double Double
+data Position = Static | Fixed Double Double | Relative Double Double
 
 position : Position -> Style
 position Static = mkStyle "position" "static"
-position (Fixed x y) = [mkStyle "position" "fixed", mkStyle "left" (pixels x), mkStyle "top" (pixels y)]
+position (Fixed x y) = 
+  [mkStyle "position" "fixed", mkStyle "left" (pixels x), mkStyle "top" (pixels y)]
+position (Relative x y) = 
+  [mkStyle "position" "relative", mkStyle "left" (pixels x), mkStyle "top" (pixels y)]
 
 zIndex : Double -> Style
 zIndex x = mkStyle "z-index" (show x)
+
+color : String -> Style
+color = mkStyle "color"
 
 backgroundColor : String -> Style
 backgroundColor = mkStyle "background-color"
