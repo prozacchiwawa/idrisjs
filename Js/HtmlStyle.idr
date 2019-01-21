@@ -78,7 +78,7 @@ flex opts =
   [mkStyle "display" "flex", listStyleToStyle $ map (\(MkFlexOption x) => x) opts]
 
 public export
-data Position = Static | Fixed Double Double | Relative Double Double
+data Position = Static | Fixed Double Double | Relative Double Double | Absolute Double Double
 
 position : Position -> Style
 position Static = mkStyle "position" "static"
@@ -86,6 +86,33 @@ position (Fixed x y) =
   [mkStyle "position" "fixed", mkStyle "left" (pixels x), mkStyle "top" (pixels y)]
 position (Relative x y) = 
   [mkStyle "position" "relative", mkStyle "left" (pixels x), mkStyle "top" (pixels y)]
+position (Absolute x y) = 
+  [mkStyle "position" "absolute", mkStyle "left" (pixels x), mkStyle "top" (pixels y)]
+
+public export
+data Auto' = Auto
+
+public export
+data Visible' = Visible
+
+public export
+data Hidden' = Hidden
+
+public export
+interface TypeOfOverflow a where
+  overflow : a -> Style
+  
+public export 
+implementation TypeOfOverflow Auto' where
+  overflow Auto = mkStyle "overflow" "auto"
+  
+public export
+implementation TypeOfOverflow Visible' where
+  overflow Visible = mkStyle "overflow" "visible"
+  
+public export
+implementation TypeOfOverflow Hidden' where
+  overflow Hidden = mkStyle "overflow" "hidden"
 
 zIndex : Double -> Style
 zIndex x = mkStyle "z-index" (show x)
