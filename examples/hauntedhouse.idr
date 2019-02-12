@@ -102,12 +102,36 @@ wallScaleY = roomYGrid / 8.0
 wallColor : String
 wallColor = "#008000"
 
+heroCollWidth : Double
+heroCollWidth = 21.0
+
+heroCollHeight : Double
+heroCollHeight = 14.0
+
 record Wall where
   constructor MkWall
   x : Double
   y : Double
   width : Double
   height : Double
+
+record SpriteBox where
+  constructor MkSpriteBox
+  sp_x : Double
+  sp_y : Double
+  sp_width : Double
+  sp_height : Double
+
+interface SpriteBoxOf t where
+  spriteBox : t -> SpriteBox
+
+implementation SpriteBoxOf Hero where
+  spriteBox h =
+    let
+      hx = hero_x h
+      hy = hero_y h
+    in
+    MkSpriteBox hx hy heroCollWidth heroCollHeight
 
 record Model where
   constructor MkModel
@@ -146,12 +170,21 @@ sixRoomLayoutWalls =
   , wallCoords rightRoomDoorwayRightSide (3.0 * roomYGrid) (2.0 * roomXGrid) bottomRoomWallYTop
   ]
 
+startHero : Hero
+startHero = MkHero BeforeStart 0 0 False
+
+spriteBoxOfStartHero : SpriteBox
+spriteBoxOfStartHero = spriteBox startHero
+
+spriteBoxOfHeroIsWhatWeThinkItShouldBe : Main.spriteBoxOfStartHero = MkSpriteBox 0.0 0.0 Main.heroCollWidth Main.heroCollHeight
+spriteBoxOfHeroIsWhatWeThinkItShouldBe = Refl
+
 emptyModel : Model
 emptyModel =
   MkModel
     0
     Data.AVL.Set.empty
-    (MkHero BeforeStart 0 0 False)
+    startHero
     0
     0.0
     0
@@ -328,6 +361,82 @@ vw () inp =
     ]
     ([ div [ style [ position (Absolute 0 0) ] ] (displays inp) ] ++ (drawables inp))
 
+pointInSpriteBox : (Double,Double) -> SpriteBox -> Bool
+pointInSpriteBox (x,y) (MkSpriteBox spx spy spw sph) =
+  let
+    sp_maxx = spx + (spw / 2.0)
+    sp_minx = spx - (spw / 2.0)
+    sp_maxy = spy + (sph / 2.0)
+    sp_miny = spy - (sph / 2.0)
+  in
+  x >= sp_minx && x <= sp_maxx && y >= sp_miny && y <= sp_maxy
+
+pointInSpriteBoxIsOkAtZeroZeroStartHeroBox : pointInSpriteBox (0.0,0.0) Main.spriteBoxOfStartHero = True
+pointInSpriteBoxIsOkAtZeroZeroStartHeroBox = Refl
+
+pointInSpriteBoxIsOkAtOtherPlaceStartHeroBox : pointInSpriteBox (5.0 * Main.roomXGrid, 5.0 * Main.roomYGrid) Main.spriteBoxOfStartHero = False
+pointInSpriteBoxIsOkAtOtherPlaceStartHeroBox = Refl
+
+spriteBoxOfWall : Wall -> SpriteBox
+spriteBoxOfWall (MkWall x y w h) =
+  MkSpriteBox (x + (w / 2.0)) (y + (h / 2.0)) w h
+
+pointsOfSpriteBox : SpriteBox -> List (Double,Double)
+pointsOfSpriteBox (MkSpriteBox spx spy spw sph) =
+  let
+    sp_maxx = spx + (spw / 2.0)
+    sp_minx = spx - (spw / 2.0)
+    sp_maxy = spy + (sph / 2.0)
+    sp_miny = spy - (sph / 2.0)
+  in
+  [ (sp_minx, sp_miny)
+  , (sp_minx, sp_maxy)
+  , (sp_maxx, sp_miny)
+  , (sp_maxx, sp_maxy)
+  ]
+
+spritesCollide : SpriteBox -> SpriteBox -> Bool
+spritesCollide spa spb =
+  let
+    ptsa = pointsOfSpriteBox spa
+    ptsb = pointsOfSpriteBox spb
+  in
+  pointsContained spa ptsb || pointsContained spb ptsa
+  where
+    pointsContained : SpriteBox -> List (Double,Double) -> Bool
+    pointsContained sp =
+      foldl
+        (\coll,pt => if coll then True else pointInSpriteBox pt sp)
+        False
+
+spriteCollideWall : SpriteBox -> Wall -> Bool
+spriteCollideWall sp w =
+  spritesCollide sp (spriteBoxOfWall w)
+
+heroBangsFace : Hero -> Model -> Bool
+heroBangsFace proposedHero model =
+  let
+    heroSprite = spriteBox proposedHero
+  in
+  foldl
+    (\hitFace,wall =>
+      if hitFace then
+        True
+      else
+        spriteCollideWall heroSprite wall
+    )
+    False
+    (walls model)
+
+heroWithXY : Double -> Double -> Hero -> Hero
+heroWithXY x y h = set_hero_x x (set_hero_y y h)
+
+heroInWall : Hero
+heroInWall = heroWithXY (wallScaleX / 2.0) ((3.0 * roomYGrid) - (wallScaleY / 2.0)) startHero
+
+heroBangsFaceShouldBeTrueIfHeroIsInTheMiddleOfLowerLeftWall : heroBangsFace Main.heroInWall Main.emptyModel = True
+heroBangsFaceShouldBeTrueIfHeroIsInTheMiddleOfLowerLeftWall = Refl
+
 runGame : Model -> Model
 runGame model =
   let
@@ -354,7 +463,14 @@ runGame model =
       let
         xmove = sumMoveResult km [("a", xmoveDistPerFrame * (-1.0)), ("d", xmoveDistPerFrame)]
         ymove = sumMoveResult km [("w", ymoveDistPerFrame * (-1.0)), ("s", ymoveDistPerFrame)]
-        moved_hero = set_hero_y (hy + ymove) (set_hero_x (hx + xmove) h)
+        want_moved_hero = set_hero_y (hy + ymove) (set_hero_x (hx + xmove) h)
+
+        moved_hero =
+          if heroBangsFace want_moved_hero model then
+            h
+          else
+            want_moved_hero
+
         new_hy = hero_y moved_hero
         new_cam_y = max 0.0 (min camMaxY (new_hy - camHeroDist))
         literal_space_pressed = Data.AVL.Set.contains " " km
