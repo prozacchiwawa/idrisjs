@@ -93,6 +93,22 @@ flame1Size = roomXGrid / 4.0
 flame2Size : Double
 flame2Size = (roomXGrid / 4.0) + 10.0
 
+wallScaleX : Double
+wallScaleX = roomXGrid / 8.0
+
+wallScaleY : Double
+wallScaleY = roomYGrid / 8.0
+
+wallColor : String
+wallColor = "#008000"
+
+record Wall where
+  constructor MkWall
+  x : Double
+  y : Double
+  width : Double
+  height : Double
+
 record Model where
   constructor MkModel
   frameno : Int
@@ -102,7 +118,33 @@ record Model where
   cam_y : Double
   matches : Int
   space_latch : Bool
+  walls : List Wall
   debug : String
+
+wallCoords : Double -> Double -> Double -> Double -> Wall
+wallCoords x1 y1 x2 y2 =
+  let
+    fx = min x1 x2
+    fy = min y1 y2
+    lx = max x1 x2
+    ly = max y1 y2
+  in
+  MkWall fx fy (lx - fx) (ly - fy)
+
+sixRoomLayoutWalls : List Wall
+sixRoomLayoutWalls =
+  let
+    leftRoomDoorwayLeftSide = (roomXGrid - wallScaleX) / 2.0
+    leftRoomDoorwayRightSide = leftRoomDoorwayLeftSide + wallScaleX
+    rightRoomDoorwayLeftSide = leftRoomDoorwayLeftSide + roomXGrid
+    rightRoomDoorwayRightSide = leftRoomDoorwayRightSide + roomXGrid
+    bottomRoomWallYTop = ((3.0 * roomYGrid) - wallScaleY)
+  in
+  [ {- Bottom row walls -}
+    wallCoords 0.0 (3.0 * roomYGrid) leftRoomDoorwayLeftSide bottomRoomWallYTop
+  , wallCoords leftRoomDoorwayRightSide (3.0 * roomYGrid) rightRoomDoorwayLeftSide bottomRoomWallYTop
+  , wallCoords rightRoomDoorwayRightSide (3.0 * roomYGrid) (2.0 * roomXGrid) bottomRoomWallYTop
+  ]
 
 emptyModel : Model
 emptyModel =
@@ -114,6 +156,7 @@ emptyModel =
     0.0
     0
     False
+    sixRoomLayoutWalls
     ""
 
 record Circle where
@@ -234,6 +277,18 @@ implementation Drawable Box where
           ]
       ] []
 
+implementation Drawable Wall where
+  draw (MkWall x y w h) =
+    let
+      center_x = x + (w / 2.0)
+      center_y = y + (h / 2.0)
+    in
+    draw (MkBox center_x center_y 0.0 w h wallColor)
+
+camOffset : Double -> Wall -> Wall
+camOffset cy (MkWall x y w h) =
+  MkWall x (y - cy) w h
+
 drawables : Model -> List (Html Input)
 drawables model =
   let
@@ -243,7 +298,7 @@ drawables model =
     fn = frameno model
     hc = heroCircles km fn cy h
   in
-  (map draw hc)
+  (map draw hc) ++ (map (draw . (camOffset cy)) (walls model))
 
 displays : Model -> List (Html Input)
 displays model =
