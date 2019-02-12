@@ -21,6 +21,7 @@ record Hero where
   hero_state : HeroState
   hero_x : Double
   hero_y : Double
+  hero_match : Bool
 
 frameSpd : Double
 frameSpd = 30.0
@@ -86,6 +87,12 @@ heroEyeSize = 7.0
 heroEyeDist : Double
 heroEyeDist = 7.0
 
+flame1Size : Double
+flame1Size = roomXGrid / 4.0
+
+flame2Size : Double
+flame2Size = (roomXGrid / 4.0) + 10.0
+
 record Model where
   constructor MkModel
   frameno : Int
@@ -93,6 +100,8 @@ record Model where
   hero : Hero
   floor : Int
   cam_y : Double
+  matches : Int
+  space_latch : Bool
   debug : String
 
 emptyModel : Model
@@ -100,9 +109,11 @@ emptyModel =
   MkModel
     0
     Data.AVL.Set.empty
-    (MkHero BeforeStart 0 0)
+    (MkHero BeforeStart 0 0 False)
     0
     0.0
+    0
+    False
     ""
 
 record Circle where
@@ -140,9 +151,9 @@ sumMoveResult keymap =
     )
     0.0
 
-heroCircles : Set String -> Double -> Hero -> List Circle
-heroCircles km cam_y hero =
-  concat eyes
+heroCircles : Set String -> Int -> Double -> Hero -> List Circle
+heroCircles km frameno cam_y hero =
+  match ++ (concat eyes)
   where
     eyePoints : List Double
     eyePoints = [-1.0, 1.0]
@@ -162,11 +173,32 @@ heroCircles km cam_y hero =
     eye : Double -> List Circle
     eye e =
       [ MkCircle (hx + (e * heroEyeDist)) (hy - cam_y) heroEyeSize "white"
-      , MkCircle (hx + (e * heroEyeDist) + xpupil + (heroEyeSize / 2.0)) (hy - cam_y + ypupil + (heroEyeSize / 2.0)) heroPupilSize "black"
+      , MkCircle (hx + (e * heroEyeDist) + xpupil) (hy - cam_y + ypupil) heroPupilSize "black"
       ]
 
     eyes : List (List Circle)
     eyes = map eye eyePoints
+
+    flame_off_x_1 : Double
+    flame_off_x_1 = cast ((mod (47 * frameno) 13) - 7)
+
+    flame_off_y_1 : Double
+    flame_off_y_1 = cast ((mod (93 * frameno) 11) - 6)
+
+    flame_off_x_2 : Double
+    flame_off_x_2 = cast ((mod (119 * frameno) 17) - 9)
+
+    flame_off_y_2 : Double
+    flame_off_y_2 = cast ((mod (117 * frameno) 13) - 6)
+
+    match : List Circle
+    match =
+      if hero_match hero then
+        [ MkCircle (hx + flame_off_x_2) ((hy - cam_y) + flame_off_y_2) flame2Size "#dbaf4a"
+        , MkCircle (hx + flame_off_x_1) ((hy - cam_y) + flame_off_y_1) flame1Size "#fff491"
+        ]
+      else
+        []
 
 Gui : Dom m => Type
 Gui {m} = DomRef {m} () (const Model) (const Input) ()
@@ -178,7 +210,7 @@ implementation Drawable Circle where
   draw c =
     div
       [ style
-          [ position (Absolute (center_x c) (center_y c))
+          [ position (Absolute ((center_x c) - (radius c)) ((center_y c) - (radius c)))
           , width (2.0 * (radius c))
           , height (2.0 * (radius c))
           , borderRadius (radius c)
@@ -208,7 +240,8 @@ drawables model =
     h = hero model
     cy = cam_y model
     km = keymap model
-    hc = heroCircles km cy h
+    fn = frameno model
+    hc = heroCircles km fn cy h
   in
   (map draw hc)
 
@@ -240,18 +273,6 @@ vw () inp =
     ]
     ([ div [ style [ position (Absolute 0 0) ] ] (displays inp) ] ++ (drawables inp))
 
-handleKeys : Model -> Model
-handleKeys model =
-  let
-    hx = hero_x (hero model)
-    hy = hero_y (hero model)
-    km = keymap model
-  in
-{-  if Data.AVL.Set.contains "a" km then
-    else
--}
-  model
-
 runGame : Model -> Model
 runGame model =
   let
@@ -270,7 +291,7 @@ runGame model =
               (roomYGrid * 2.9)
               (set_hero_x (roomXGrid / 2.0) (set_hero_state Playing h))
         in
-        set_hero new_hero model
+        set_hero new_hero (set_space_latch True model)
       else
         emptyModel
 
@@ -281,9 +302,33 @@ runGame model =
         moved_hero = set_hero_y (hy + ymove) (set_hero_x (hx + xmove) h)
         new_hy = hero_y moved_hero
         new_cam_y = max 0.0 (min camMaxY (new_hy - camHeroDist))
+        literal_space_pressed = Data.AVL.Set.contains " " km
+        space_pressed = literal_space_pressed && not (space_latch model)
+
+        lightMatchIfOut =
+          if hero_match h then
+            False
+          else
+            space_pressed
+
+        modelWithMatchLit =
+          if lightMatchIfOut then
+            set_matches ((matches model) + 1) model
+          else
+            model
+
+        moved_hero_match =
+          if lightMatchIfOut then
+            set_hero_match True moved_hero
+          else
+            moved_hero
       in
-      set_debug ("move is " ++ (show xmove) ++ "x" ++ (show ymove))
-        (set_cam_y new_cam_y (set_frameno ((frameno model) + 1) (set_hero moved_hero model)))
+      set_cam_y
+        new_cam_y
+        (set_frameno ((frameno model) + 1)
+          (set_hero
+            moved_hero_match
+            (set_space_latch literal_space_pressed modelWithMatchLit)))
 
 handleInput : Dom m => (d: Var) -> (s: Var) -> Input -> ST m () [s:::State Model, d:::Gui {m}]
 handleInput d s x =
