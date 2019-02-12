@@ -157,18 +157,70 @@ wallCoords x1 y1 x2 y2 =
 
 sixRoomLayoutWalls : List Wall
 sixRoomLayoutWalls =
-  let
+  {- Bottom row walls -} 
+  (horizontalWallSet 0.0) ++
+  [ {- Side walls of third row -}
+    wallCoords 0.0 bottomRoomWallYTop wallScaleX midRoomDoorBottom
+  , wallCoords ((2.0 * roomXGrid) - wallScaleX) bottomRoomWallYTop (2.0 * roomXGrid) midRoomDoorBottom
+    {- Side walls of first row -}
+  , wallCoords 0.0 wallScaleY wallScaleX midRoomDoorTop
+  , wallCoords ((2.0 * roomXGrid) - wallScaleX) wallScaleY (2.0 * roomXGrid) midRoomDoorTop
+    {- Middle veritcal walls -}
+  , wallCoords centerWallLeftSide 0.0 centerWallRightSide row1DoorTop
+  , wallCoords centerWallLeftSide row1DoorBottom centerWallRightSide midRoomDoorTop
+  , wallCoords centerWallLeftSide midRoomDoorBottom centerWallRightSide row3DoorTop
+  , wallCoords centerWallLeftSide row3DoorBottom centerWallRightSide (3.0 * roomYGrid)
+  ] 
+    {- Top row walls -}
+    ++ (horizontalWallSet ((3.0 * roomYGrid) - wallScaleY))
+    ++ (horizontalWallSet (roomYGrid - (wallScaleY / 2.0)))
+    ++ (horizontalWallSet ((2.0 * roomYGrid) - (wallScaleY / 2.0)))
+  where
+    leftRoomDoorwayLeftSide : Double
     leftRoomDoorwayLeftSide = (roomXGrid - wallScaleX) / 2.0
+    
+    leftRoomDoorwayRightSide : Double
     leftRoomDoorwayRightSide = leftRoomDoorwayLeftSide + wallScaleX
+    
+    rightRoomDoorwayLeftSide : Double
     rightRoomDoorwayLeftSide = leftRoomDoorwayLeftSide + roomXGrid
+    
+    rightRoomDoorwayRightSide : Double
     rightRoomDoorwayRightSide = leftRoomDoorwayRightSide + roomXGrid
+    
+    bottomRoomWallYTop : Double
     bottomRoomWallYTop = ((3.0 * roomYGrid) - wallScaleY)
-  in
-  [ {- Bottom row walls -}
-    wallCoords 0.0 (3.0 * roomYGrid) leftRoomDoorwayLeftSide bottomRoomWallYTop
-  , wallCoords leftRoomDoorwayRightSide (3.0 * roomYGrid) rightRoomDoorwayLeftSide bottomRoomWallYTop
-  , wallCoords rightRoomDoorwayRightSide (3.0 * roomYGrid) (2.0 * roomXGrid) bottomRoomWallYTop
-  ]
+    
+    midRoomDoorBottom : Double
+    midRoomDoorBottom = ((roomYGrid * 3.0) + wallScaleY) / 2.0
+    
+    midRoomDoorTop : Double
+    midRoomDoorTop = midRoomDoorBottom - wallScaleY
+    
+    row1DoorTop : Double
+    row1DoorTop = midRoomDoorTop - roomYGrid
+    
+    row1DoorBottom : Double
+    row1DoorBottom = row1DoorTop + wallScaleY
+    
+    row3DoorTop : Double
+    row3DoorTop = row1DoorTop + (roomYGrid * 2.0)
+    
+    row3DoorBottom : Double
+    row3DoorBottom = row1DoorBottom + (roomYGrid * 2.0)
+    
+    centerWallLeftSide : Double
+    centerWallLeftSide = roomXGrid - (wallScaleX / 2.0)
+    
+    centerWallRightSide : Double
+    centerWallRightSide = centerWallLeftSide + wallScaleX
+
+    horizontalWallSet : Double -> List Wall
+    horizontalWallSet ytop =
+      [ wallCoords 0.0 ytop leftRoomDoorwayLeftSide (ytop + wallScaleY)
+      , wallCoords leftRoomDoorwayRightSide ytop rightRoomDoorwayLeftSide (ytop + wallScaleY)
+      , wallCoords rightRoomDoorwayRightSide ytop (2.0 * roomXGrid) (ytop + wallScaleY)
+      ]
 
 startHero : Hero
 startHero = MkHero BeforeStart 0 0 False
@@ -344,6 +396,20 @@ displays model =
 
 vw : () -> Model -> Html Input
 vw () inp =
+  let
+    body =
+      case (hero_state (hero inp)) of
+        BeforeStart =>
+          [ div 
+            [ style [ position (Absolute 100 100) ] ] 
+            [ text "Press space to start" ]
+          ]
+         
+        Playing =>
+          [ div 
+            [ style [ position (Absolute 0 0) ] ] (displays inp) 
+          ] ++ (drawables inp)
+  in
   div
     [ style
         [ position (Absolute 0 0)
@@ -358,8 +424,7 @@ vw () inp =
     , onkeydown (\k => KeyDown (key k))
     , onkeyup (\k => KeyUp (key k))
     , tabindex 0
-    ]
-    ([ div [ style [ position (Absolute 0 0) ] ] (displays inp) ] ++ (drawables inp))
+    ] body
 
 pointInSpriteBox : (Double,Double) -> SpriteBox -> Bool
 pointInSpriteBox (x,y) (MkSpriteBox spx spy spw sph) =
