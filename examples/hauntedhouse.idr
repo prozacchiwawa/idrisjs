@@ -15,6 +15,8 @@ data Input
 data HeroState
   = BeforeStart
   | Playing
+  | GoingIntoStairs Int Int (Double,Double)
+  | ComingOutOfStairs Int (Double,Double)
 
 record Hero where
   constructor MkHero
@@ -25,6 +27,12 @@ record Hero where
 
 frameSpd : Double
 frameSpd = 30.0
+
+goingIntoStairsFrames : Int
+goingIntoStairsFrames = 20
+
+comingOutOfStairs : Int
+comingOutOfStairs = 30
 
 prngPrime : Int
 prngPrime = 96443
@@ -99,8 +107,13 @@ wallScaleX = roomXGrid / 8.0
 wallScaleY : Double
 wallScaleY = roomYGrid / 8.0
 
-wallColor : String
-wallColor = "#008000"
+wallColor : Int -> String
+wallColor floor =
+  case floor of
+    0 => "#0000CD"
+    1 => "#800000"
+    2 => "#008000"
+    _ => "#FF4500"
 
 heroCollWidth : Double
 heroCollWidth = 21.0
@@ -133,6 +146,25 @@ implementation SpriteBoxOf Hero where
     in
     MkSpriteBox hx hy heroCollWidth heroCollHeight
 
+record IntAndWall where
+  constructor MkIntAndWall
+  iw_floor : Int
+  iw_wall : Wall
+
+data StairsPosition
+  = LeftStairs
+  | RightStairs
+  | BottomLeftStairs
+  | TopLeftStairs
+  | BottomRightStairs
+  | TopRightStairs
+
+record Stairs where
+  constructor MkStairs
+  st_floor : Int
+  st_up : Bool
+  st_pos : StairsPosition
+
 record Model where
   constructor MkModel
   frameno : Int
@@ -143,6 +175,7 @@ record Model where
   matches : Int
   space_latch : Bool
   walls : List Wall
+  stairs : List Stairs
   debug : String
 
 wallCoords : Double -> Double -> Double -> Double -> Wall
@@ -157,7 +190,7 @@ wallCoords x1 y1 x2 y2 =
 
 sixRoomLayoutWalls : List Wall
 sixRoomLayoutWalls =
-  {- Bottom row walls -} 
+  {- Bottom row walls -}
   (horizontalWallSet 0.0) ++
   [ {- Side walls of third row -}
     wallCoords 0.0 bottomRoomWallYTop wallScaleX midRoomDoorBottom
@@ -170,7 +203,7 @@ sixRoomLayoutWalls =
   , wallCoords centerWallLeftSide row1DoorBottom centerWallRightSide midRoomDoorTop
   , wallCoords centerWallLeftSide midRoomDoorBottom centerWallRightSide row3DoorTop
   , wallCoords centerWallLeftSide row3DoorBottom centerWallRightSide (3.0 * roomYGrid)
-  ] 
+  ]
     {- Top row walls -}
     ++ (horizontalWallSet ((3.0 * roomYGrid) - wallScaleY))
     ++ (horizontalWallSet (roomYGrid - (wallScaleY / 2.0)))
@@ -178,40 +211,40 @@ sixRoomLayoutWalls =
   where
     leftRoomDoorwayLeftSide : Double
     leftRoomDoorwayLeftSide = (roomXGrid - wallScaleX) / 2.0
-    
+
     leftRoomDoorwayRightSide : Double
     leftRoomDoorwayRightSide = leftRoomDoorwayLeftSide + wallScaleX
-    
+
     rightRoomDoorwayLeftSide : Double
     rightRoomDoorwayLeftSide = leftRoomDoorwayLeftSide + roomXGrid
-    
+
     rightRoomDoorwayRightSide : Double
     rightRoomDoorwayRightSide = leftRoomDoorwayRightSide + roomXGrid
-    
+
     bottomRoomWallYTop : Double
     bottomRoomWallYTop = ((3.0 * roomYGrid) - wallScaleY)
-    
+
     midRoomDoorBottom : Double
     midRoomDoorBottom = ((roomYGrid * 3.0) + wallScaleY) / 2.0
-    
+
     midRoomDoorTop : Double
     midRoomDoorTop = midRoomDoorBottom - wallScaleY
-    
+
     row1DoorTop : Double
     row1DoorTop = midRoomDoorTop - roomYGrid
-    
+
     row1DoorBottom : Double
     row1DoorBottom = row1DoorTop + wallScaleY
-    
+
     row3DoorTop : Double
     row3DoorTop = row1DoorTop + (roomYGrid * 2.0)
-    
+
     row3DoorBottom : Double
     row3DoorBottom = row1DoorBottom + (roomYGrid * 2.0)
-    
+
     centerWallLeftSide : Double
     centerWallLeftSide = roomXGrid - (wallScaleX / 2.0)
-    
+
     centerWallRightSide : Double
     centerWallRightSide = centerWallLeftSide + wallScaleX
 
@@ -221,6 +254,52 @@ sixRoomLayoutWalls =
       , wallCoords leftRoomDoorwayRightSide ytop rightRoomDoorwayLeftSide (ytop + wallScaleY)
       , wallCoords rightRoomDoorwayRightSide ytop (2.0 * roomXGrid) (ytop + wallScaleY)
       ]
+
+stairsOfBuilding : List Stairs
+stairsOfBuilding =
+  [ {- Left stairs up, floor 0 -}
+    MkStairs 0 True LeftStairs
+  , MkStairs 1 False LeftStairs
+  ]
+  where
+    midRoomDoorBottom : Double
+    midRoomDoorBottom = ((roomYGrid * 3.0) + wallScaleY) / 2.0
+
+    midRoomDoorTop : Double
+    midRoomDoorTop = midRoomDoorBottom - wallScaleY
+
+stairsBox : Int -> Stairs -> List SpriteBox
+stairsBox floor (MkStairs fl up pos) =
+  let
+    leftXCenter = wallScaleX / 2.0
+    rightXCenter = (2.0 * roomXGrid) - (wallScaleX / 2.0)
+    lEdgeXCenter = 0.5 * roomXGrid
+    rEdgeXCenter = 1.5 * roomXGrid
+  in
+  if floor == fl then
+    case pos of
+      LeftStairs =>
+        [MkSpriteBox leftXCenter (roomYGrid * 1.5) wallScaleX wallScaleY]
+      RightStairs =>
+        [MkSpriteBox rightXCenter (roomYGrid * 1.5) wallScaleX wallScaleY]
+      BottomLeftStairs =>
+        [MkSpriteBox lEdgeXCenter ((3.0 * roomYGrid) - (wallScaleY / 2.0)) wallScaleX wallScaleY]
+      BottomRightStairs =>
+        [MkSpriteBox rEdgeXCenter ((3.0 * roomYGrid) - (wallScaleY / 2.0)) wallScaleX wallScaleY]
+      TopLeftStairs =>
+        [MkSpriteBox lEdgeXCenter (wallScaleY / 2.0) wallScaleX wallScaleY]
+      TopRightStairs =>
+        [MkSpriteBox rEdgeXCenter (wallScaleY / 2.0) wallScaleX wallScaleY]
+  else
+    []
+
+stairsDirection : StairsPosition -> (Double,Double)
+stairsDirection LeftStairs = (xmoveDistPerFrame * (-1.0), 0)
+stairsDirection RightStairs = (xmoveDistPerFrame, 0)
+stairsDirection TopLeftStairs = (0, ymoveDistPerFrame * (-1.0))
+stairsDirection TopRightStairs = (0, ymoveDistPerFrame * (-1.0))
+stairsDirection BottomLeftStairs = (0, ymoveDistPerFrame)
+stairsDirection BottomRightStairs = (0, ymoveDistPerFrame)
 
 startHero : Hero
 startHero = MkHero BeforeStart 0 0 False
@@ -242,6 +321,7 @@ emptyModel =
     0
     False
     sixRoomLayoutWalls
+    stairsOfBuilding
     ""
 
 record Circle where
@@ -362,13 +442,13 @@ implementation Drawable Box where
           ]
       ] []
 
-implementation Drawable Wall where
-  draw (MkWall x y w h) =
+implementation Drawable IntAndWall where
+  draw (MkIntAndWall floor (MkWall x y w h)) =
     let
       center_x = x + (w / 2.0)
       center_y = y + (h / 2.0)
     in
-    draw (MkBox center_x center_y 0.0 w h wallColor)
+    draw (MkBox center_x center_y 0.0 w h (wallColor floor))
 
 camOffset : Double -> Wall -> Wall
 camOffset cy (MkWall x y w h) =
@@ -381,9 +461,11 @@ drawables model =
     cy = cam_y model
     km = keymap model
     fn = frameno model
+    fl = floor model
     hc = heroCircles km fn cy h
   in
-  (map draw hc) ++ (map (draw . (camOffset cy)) (walls model))
+  (map draw hc) ++
+    (map draw (map (\w => MkIntAndWall fl (camOffset cy w)) (walls model)))
 
 displays : Model -> List (Html Input)
 displays model =
@@ -397,18 +479,23 @@ displays model =
 vw : () -> Model -> Html Input
 vw () inp =
   let
+    drawnDuringPlay =
+      [ div
+        [ style [ position (Absolute 0 0) ] ] (displays inp)
+      ] ++ (drawables inp)
+
     body =
       case (hero_state (hero inp)) of
         BeforeStart =>
-          [ div 
-            [ style [ position (Absolute 100 100) ] ] 
+          [ div
+            [ style [ position (Absolute 100 100) ] ]
             [ text "Press space to start" ]
           ]
-         
-        Playing =>
-          [ div 
-            [ style [ position (Absolute 0 0) ] ] (displays inp) 
-          ] ++ (drawables inp)
+
+        Playing => drawnDuringPlay
+        GoingIntoStairs _ _ _ => drawnDuringPlay
+        ComingOutOfStairs _ _ => drawnDuringPlay
+
   in
   div
     [ style
@@ -502,6 +589,30 @@ heroInWall = heroWithXY (wallScaleX / 2.0) ((3.0 * roomYGrid) - (wallScaleY / 2.
 heroBangsFaceShouldBeTrueIfHeroIsInTheMiddleOfLowerLeftWall : heroBangsFace Main.heroInWall Main.emptyModel = True
 heroBangsFaceShouldBeTrueIfHeroIsInTheMiddleOfLowerLeftWall = Refl
 
+heroInStairs : Hero -> Model -> Maybe Stairs
+heroInStairs hero model =
+  case gotStairs of
+    [] => Nothing
+    (_, st) :: _ => Just st
+  where
+    hx : Double
+    hx = hero_x hero
+
+    hy : Double
+    hy = hero_y hero
+
+    pairOfBoxAndStairs : Stairs -> List (SpriteBox, Stairs)
+    pairOfBoxAndStairs st = map (\box => (box,st)) (stairsBox (floor model) st)
+
+    stairsWithBoxes : List (List (SpriteBox, Stairs))
+    stairsWithBoxes = map pairOfBoxAndStairs (stairs model)
+
+    checkStairs : List (SpriteBox, Stairs)
+    checkStairs = concat stairsWithBoxes
+
+    gotStairs : List (SpriteBox, Stairs)
+    gotStairs = filter (\(box,st) => pointInSpriteBox (hx,hy) box) checkStairs
+
 runGame : Model -> Model
 runGame model =
   let
@@ -509,7 +620,9 @@ runGame model =
     hx = hero_x h
     hy = hero_y h
     cy = cam_y model
+    fl = floor model
     km = keymap model
+    st = stairs model
   in
   case hero_state h of
     BeforeStart =>
@@ -523,6 +636,34 @@ runGame model =
         set_hero new_hero (set_space_latch True model)
       else
         emptyModel
+
+    GoingIntoStairs frames newFloor (dx,dy) =>
+      if frames == 0 then
+        set_hero
+          (set_hero_state
+            (ComingOutOfStairs comingOutOfStairs (dx * (-1.0), dy * (-1.0)))
+            h
+          )
+          (set_floor newFloor model)
+      else
+        set_hero
+          (set_hero_state
+            (GoingIntoStairs (frames-1) newFloor (dx,dy))
+            (set_hero_x (hx+dx) (set_hero_y (hy+dy) h))
+          )
+          model
+
+    ComingOutOfStairs frames (dx,dy) =>
+      let
+        moved_hero =
+          if frames == 0 then
+            set_hero_state Playing h
+          else
+            set_hero_state
+              (ComingOutOfStairs (frames-1) (dx,dy))
+              (set_hero_x (hx+dx) (set_hero_y (hy+dy) h))
+      in
+      set_hero moved_hero model
 
     Playing =>
       let
@@ -558,13 +699,31 @@ runGame model =
             set_hero_match True moved_hero
           else
             moved_hero
+
+        entered_stairs = heroInStairs moved_hero_match model
       in
-      set_cam_y
-        new_cam_y
-        (set_frameno ((frameno model) + 1)
-          (set_hero
-            moved_hero_match
-            (set_space_latch literal_space_pressed modelWithMatchLit)))
+      case entered_stairs of
+        Nothing =>
+          set_cam_y
+            new_cam_y
+            (set_frameno ((frameno model) + 1)
+              (set_hero
+                moved_hero_match
+                (set_space_latch literal_space_pressed modelWithMatchLit)))
+        Just (MkStairs fl up pos) =>
+          let
+            new_floor = if up then fl + 1 else fl - 1
+            move_dir = stairsDirection pos
+            updated_hero =
+              set_hero_state
+                (GoingIntoStairs goingIntoStairsFrames new_floor move_dir)
+                moved_hero_match
+          in
+          set_cam_y
+            new_cam_y
+            (set_frameno ((frameno model) + 1)
+              (set_hero updated_hero modelWithMatchLit)
+            )
 
 handleInput : Dom m => (d: Var) -> (s: Var) -> Input -> ST m () [s:::State Model, d:::Gui {m}]
 handleInput d s x =
